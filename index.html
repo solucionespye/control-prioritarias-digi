@@ -531,15 +531,9 @@
     <div class="modal-head">
       <h2 id="modal-title">Nueva obra</h2>
       <p id="modal-coords-view" class="mono"></p>
-      <div class="field-row" id="modal-coords-edit" style="display:none;">
-        <div class="field">
-          <label>Latitud</label>
-          <input type="number" step="any" id="f-input-lat" placeholder="36.620000">
-        </div>
-        <div class="field">
-          <label>Longitud</label>
-          <input type="number" step="any" id="f-input-lon" placeholder="-4.750000">
-        </div>
+      <div class="field" id="modal-coords-edit" style="display:none;">
+        <label>Coordenadas (latitud, longitud)</label>
+        <input type="text" inputmode="decimal" id="f-input-coords" placeholder="36.620000, -4.750000" autocomplete="off">
       </div>
     </div>
     <div class="modal-body">
@@ -1130,7 +1124,6 @@
       const d = new Date();
       const pad = n => String(n).padStart(2,'0');
       const name = 'foto_' + d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()) + '_' +
-                   pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + '_' +
                    Math.random().toString(36).slice(2,5) + '.jpg';
       addFotos([new File([blob], name, { type: 'image/jpeg' })]);
     }, 'image/jpeg', 0.9);
@@ -1188,7 +1181,7 @@
     if(!iso) return '';
     const d = new Date(iso);
     if(isNaN(d)) return '';
-    return d.toLocaleDateString('es-ES') + ' ' + d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+    return d.toLocaleDateString('es-ES');
   }
 
   function renderComentarios(){
@@ -1279,8 +1272,7 @@
     if(puedeEditarCoords){
       $('modal-coords-view').style.display = 'none';
       $('modal-coords-edit').style.display = '';
-      $('f-input-lat').value = hayCoords ? Number(currentLat) : '';
-      $('f-input-lon').value = hayCoords ? Number(currentLon) : '';
+      $('f-input-coords').value = hayCoords ? `${Number(currentLat).toFixed(6)}, ${Number(currentLon).toFixed(6)}` : '';
     } else {
       $('modal-coords-edit').style.display = 'none';
       $('modal-coords-view').style.display = '';
@@ -1358,11 +1350,12 @@
     let latFinal = pendingLatLng ? pendingLatLng.lat : (existingObra?.lat ?? null);
     let lonFinal = pendingLatLng ? pendingLatLng.lng : (existingObra?.lon ?? null);
     if(puedeEditarCoords){
-      const latInput = $('f-input-lat').value.trim();
-      const lonInput = $('f-input-lon').value.trim();
-      const latNum = Number(latInput), lonNum = Number(lonInput);
-      if(latInput === "" || lonInput === "" || !Number.isFinite(latNum) || !Number.isFinite(lonNum) || Math.abs(latNum) > 90 || Math.abs(lonNum) > 180){
-        alert('Introduce una latitud (entre -90 y 90) y una longitud (entre -180 y 180) válidas. Son obligatorias, no pueden quedar vacías.');
+      const coordsInput = $('f-input-coords').value.trim().replace(/;/g, ',');
+      const partesCoords = coordsInput.split(',').map(v => v.trim()).filter(Boolean);
+      const latNum = partesCoords.length === 2 ? Number(partesCoords[0]) : NaN;
+      const lonNum = partesCoords.length === 2 ? Number(partesCoords[1]) : NaN;
+      if(partesCoords.length !== 2 || !Number.isFinite(latNum) || !Number.isFinite(lonNum) || Math.abs(latNum) > 90 || Math.abs(lonNum) > 180){
+        alert('Introduce las coordenadas en una sola línea: latitud, longitud. Ejemplo: 36.620000, -4.750000');
         $('save-btn').disabled = false;
         return;
       }
