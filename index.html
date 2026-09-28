@@ -508,7 +508,7 @@
 <!-- MODAL: gestión de usuarios (solo Superadmin) -->
 <div class="overlay" id="users-overlay">
   <div class="modal users-modal">
-    <div class="modal-head"><h2>Gestión de usuarios</h2><p>Solo el Superadmin puede crear, modificar, activar, desactivar o eliminar usuarios. La cuenta del Superadmin conectado está protegida y no se puede desactivar ni eliminar.</p></div>
+    <div class="modal-head"><h2>Gestión de usuarios</h2><p>Solo el Superadmin puede crear, modificar, activar, desactivar o eliminar usuarios. La cuenta del Superadmin conectado está protegida y no se puede desactivar ni eliminar. El rol de un Superadmin está bloqueado: solo se puede cambiar su nombre o email.</p></div>
     <div class="modal-body">
       <div class="field-row">
         <div class="field"><label>Nombre</label><input id="new-user-name" type="text"></div>
@@ -1915,6 +1915,11 @@
     if(['activate','deactivate','delete'].includes(body?.action) && body?.id === currentUser?.id){
       throw new Error('Tu propia cuenta de Superadmin está protegida y no se puede activar, desactivar ni eliminar.');
     }
+    // El rol de un Superadmin está bloqueado: nadie puede cambiarlo (solo nombre y email).
+    if(body?.action==='update' && body?.targetRol==='superadmin' && body?.rol!=='superadmin'){
+      throw new Error('El rol de un Superadmin está bloqueado y no se puede cambiar.');
+    }
+    if(body && 'targetRol' in body){ body={...body}; delete body.targetRol; }
     const {data,error}=await supabaseClient.functions.invoke('admin-users',{body});
     if(error) throw error;
     if(data?.error) throw new Error(data.error);
@@ -1950,9 +1955,15 @@
       else if(action==='delete'){if(!confirm(`¿Eliminar definitivamente a ${u.nombre||u.email}?`))return;await callAdminUsers({action:'delete',id});}
       else if(action==='edit'){
         const nombre=prompt('Nombre:',u.nombre||'');if(nombre===null)return;
-        const rol=prompt('Rol (superadmin, coordinador o tecnico):',u.rol||'tecnico');if(rol===null)return;
+        const esSuper=u.rol==='superadmin';
+        let rol=u.rol||'tecnico';
+        if(!esSuper){
+          const r=prompt('Rol (coordinador o tecnico):',rol);if(r===null)return;
+          rol=r.trim().toLowerCase();
+          if(!['coordinador','tecnico'].includes(rol)){alert('Rol no válido. Usa "coordinador" o "tecnico".');return;}
+        }
         const email=prompt('Email:',u.email||'');if(email===null)return;
-        await callAdminUsers({action:'update',id,nombre:nombre.trim(),rol:rol.trim().toLowerCase(),email:email.trim().toLowerCase()});
+        await callAdminUsers({action:'update',id,nombre:nombre.trim(),rol,email:email.trim().toLowerCase(),targetRol:u.rol});
       }
       await loadUsers();
     }catch(e){alert(e.message||'No se pudo completar la operación.');}
