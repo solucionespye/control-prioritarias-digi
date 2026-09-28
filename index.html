@@ -755,6 +755,8 @@
   function isSuperadmin(){ return currentProfile?.rol === 'superadmin' && currentProfile?.activo === true; }
   function isCoordinator(){ return currentProfile?.rol === 'coordinador' && currentProfile?.activo === true; }
   function canDeleteObras(){ return isSuperadmin() || isCoordinator(); }
+  // Solo técnicos y Superadmin pueden modificar/asignar coordenadas.
+  function canEditCoords(){ return isSuperadmin() || (currentProfile?.rol === 'tecnico' && currentProfile?.activo === true); }
   function canManageUsers(){ return isSuperadmin(); }
 
   function showAuthError(message){
@@ -1264,7 +1266,7 @@
     $('delete-btn').style.display = (existing && canDeleteObras()) ? '' : 'none';
     $('modal-title').textContent = existing ? "Editar obra" : "Nueva obra";
 
-    const puedeEditarCoords = canDeleteObras();
+    const puedeEditarCoords = canEditCoords() || (!editingId && isCoordinator());
     const currentLat = latlng ? latlng.lat : (existing?.lat ?? null);
     const currentLon = latlng ? latlng.lng : (existing?.lon ?? null);
     const hayCoords = Number.isFinite(Number(currentLat)) && Number.isFinite(Number(currentLon));
@@ -1346,7 +1348,7 @@
     $('save-btn').disabled = true;
     const now = new Date();
     const existingObra = editingId ? obras.find(o => o.id === editingId) : null;
-    const puedeEditarCoords = canDeleteObras();
+    const puedeEditarCoords = canEditCoords() || (!editingId && isCoordinator());
     let latFinal = pendingLatLng ? pendingLatLng.lat : (existingObra?.lat ?? null);
     let lonFinal = pendingLatLng ? pendingLatLng.lng : (existingObra?.lon ?? null);
     if(puedeEditarCoords){
@@ -1362,7 +1364,7 @@
       latFinal = latNum;
       lonFinal = lonNum;
     } else if(latFinal == null || lonFinal == null){
-      alert('Esta obra no tiene coordenadas y tu perfil no tiene permiso para asignarlas. Pide a un coordinador o superadmin que las añada.');
+      alert('Esta obra no tiene coordenadas y tu perfil no tiene permiso para asignarlas. Pide a un técnico o superadmin que las añada.');
       $('save-btn').disabled = false;
       return;
     }
@@ -1811,10 +1813,10 @@
           if(userAccuracyCircle) map.removeLayer(userAccuracyCircle);
           const metros = Math.round(accuracy || 0);
           userAccuracyCircle = L.circle([latitude, longitude], {
-            radius: accuracy || 0, color:'#2e6fa8', weight:1, fillColor:'#2e6fa8', fillOpacity:0.15
+            radius: accuracy || 0, color:'#000', weight:1, fillColor:'#000', fillOpacity:0.10
           }).addTo(map);
           userLocationMarker = L.circleMarker([latitude, longitude], {
-            radius: 9, color:'#fff', weight:3, fillColor:'#2e6fa8', fillOpacity:1
+            radius: 9, color:'#fff', weight:3, fillColor:'#000', fillOpacity:1
           }).addTo(map).bindPopup(`Tu ubicación actual (${metros} m)`).openPopup();
         },
         (err) => {
