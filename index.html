@@ -323,6 +323,36 @@
   .btn-header{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.25);padding:7px 10px;border-radius:3px;cursor:pointer;font-size:12px;font-weight:600;}
   .btn-header:hover{background:rgba(255,255,255,.16);}
   .btn-header.admin{border-color:rgba(255,255,255,.4);}
+
+  /* ---------- ALERTAS DE PRÓXIMO REPLANTEO ---------- */
+  .user-row{display:flex;align-items:center;gap:8px;min-width:0;}
+  .alert-pill{display:none;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;color:#5a3a00;background:#ffc94d;padding:7px 9px;border:1px solid #e0a800;border-radius:3px;cursor:pointer;white-space:nowrap;flex:none;}
+  .alert-pill.show{display:inline-flex;}
+  .alert-pill.active{background:#fff;box-shadow:0 0 0 2px #ffc94d;}
+  td.fecha-soon{background:#fff3cd;color:#7a5200;font-weight:700;}
+  td.fecha-late{background:#fde2e2;color:#a31515;font-weight:700;}
+  .fecha-sub{display:block;font-size:10.5px;font-weight:600;}
+  .alert-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--line);border-left:4px solid #ffc94d;border-radius:4px;}
+  .alert-item.late{border-left-color:#d93636;}
+  .alert-info{min-width:0;display:flex;flex-direction:column;gap:2px;font-size:13px;}
+  .alert-info span{font-size:11.5px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;}
+  .alert-item .btn-primary{flex:none;padding:8px 12px;font-size:12px;}
+  /* "!" sobre el punto del mapa */
+  .pin-alert{background:transparent;border:none;}
+  .pin-alert span{display:block;width:16px;height:18px;line-height:18px;text-align:center;font-family:'Archivo',Arial,sans-serif;font-size:20px;font-weight:900;color:#f2a900;cursor:pointer;
+    text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff,0 0 4px rgba(0,0,0,.45);}
+  .pin-alert.late span{color:#d62020;}
+  /* Pulsación larga para crear un punto */
+  #map{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
+  .lp-ring{position:absolute;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;border:3px solid var(--orange);background:rgba(255,122,26,.18);pointer-events:none;z-index:650;animation:lpGrow 1s linear forwards;}
+  @keyframes lpGrow{from{transform:scale(.15);opacity:.95;}to{transform:scale(1);opacity:.55;}}
+  @media(max-width:640px){
+    .user-row{grid-column:1 / -1 !important;gap:5px;}
+    .user-row .user-pill{flex:1 1 auto;min-width:0;font-size:10.5px !important;padding:7px 7px !important;}
+    .alert-pill{padding:6px 7px;font-size:10.5px;}
+    .alert-word{display:none;}
+    tbody td[data-label]::before{content:attr(data-label) ": ";color:var(--ink-soft);font-weight:600;font-size:11.5px;}
+  }
   #user-admin-btn{display:none;}
   .users-modal{max-width:760px;}
 
@@ -439,7 +469,10 @@
         <p class="subtitle">Mapa creado por Juan José Porras para el equipo técnico de replanteos de DIGI.</p>
       </div>
       <div class="session-bar">
-        <div class="user-pill" id="session-user-pill">Sin sesión</div>
+        <div class="user-row">
+          <button type="button" class="alert-pill" id="alert-pill"></button>
+          <div class="user-pill" id="session-user-pill">Sin sesión</div>
+        </div>
         <button class="btn-header" id="change-password-btn">Cambiar contraseña</button>
         <button class="btn-header" id="logout-btn">Salir</button>
         <button class="btn-header admin" id="user-admin-btn">Usuarios</button>
@@ -492,6 +525,14 @@
 
 
 <!-- MODAL: cambio obligatorio / cambio de contraseña -->
+<div class="overlay" id="alert-overlay">
+  <div class="modal">
+    <div class="modal-head"><h2>⚠ Replanteos próximos</h2><p id="alert-sub"></p></div>
+    <div class="modal-body" id="alert-list"></div>
+    <div class="modal-actions"><button class="btn-secondary" id="alert-cancel-btn">Cancelar</button></div>
+  </div>
+</div>
+
 <div class="overlay" id="password-overlay">
   <div class="modal">
     <div class="modal-head"><h2 id="password-title">Cambiar contraseña</h2><p>La nueva contraseña se aplica a tu cuenta de Supabase.</p></div>
@@ -685,6 +726,7 @@
 
   let obras = [];          // in-memory list of all shared obras
   let markersById = {};    // id -> leaflet marker
+  let alertBadges = [];    // signos "!" de las obras con alerta de replanteo
   let pendingLatLng = null;
   let editingId = null;
   let techName = "";
@@ -699,7 +741,46 @@
     attribution: '&copy; OpenStreetMap'
   }).addTo(map);
 
-  map.on('click', (e) => openModal(e.latlng, null));
+  // Crear un punto: mantener pulsado el mapa 1 segundo (un toque normal ya no crea nada)
+  (function setupLongPress(){
+    const LONG_MS = 1000, MOVE_PX = 10;
+    const cont = map.getContainer();
+    let timer = null, ring = null, startX = 0, startY = 0, active = false;
+    const pointers = new Set();
+    function cancel(){
+      clearTimeout(timer); timer = null; active = false;
+      if(ring){ ring.remove(); ring = null; }
+    }
+    cont.addEventListener('pointerdown', (e) => {
+      pointers.add(e.pointerId);
+      if(pointers.size > 1 || (e.pointerType === 'mouse' && e.button !== 0)){ cancel(); return; }
+      // no actuar sobre marcadores, ventanas emergentes ni controles
+      if(e.target.closest('.leaflet-control, .leaflet-popup, .leaflet-marker-icon, .leaflet-interactive')) return;
+      cancel();
+      active = true; startX = e.clientX; startY = e.clientY;
+      const r = cont.getBoundingClientRect();
+      ring = document.createElement('div');
+      ring.className = 'lp-ring';
+      ring.style.left = (e.clientX - r.left) + 'px';
+      ring.style.top = (e.clientY - r.top) + 'px';
+      cont.appendChild(ring);
+      timer = setTimeout(() => {
+        const latlng = map.mouseEventToLatLng({clientX:startX, clientY:startY});
+        cancel();
+        try{ navigator.vibrate && navigator.vibrate(40); }catch(_){}
+        openModal(latlng, null);
+      }, LONG_MS);
+    });
+    cont.addEventListener('pointermove', (e) => {
+      if(active && Math.hypot(e.clientX - startX, e.clientY - startY) > MOVE_PX) cancel();
+    });
+    ['pointerup','pointercancel','pointerleave'].forEach(ev => cont.addEventListener(ev, (e) => {
+      if(ev !== 'pointerleave') pointers.delete(e.pointerId);
+      cancel();
+    }));
+    cont.addEventListener('contextmenu', (e) => { if(active) e.preventDefault(); });
+    map.on('movestart zoomstart', cancel);
+  })();
 
   // ---------- BUSCADOR DE UBICACIÓN (dirección o coordenadas) ----------
   let searchMarker = null;
@@ -715,7 +796,7 @@
       const lat = parseFloat(coordMatch[1]), lon = parseFloat(coordMatch[2]);
       map.setView([lat, lon], 17);
       if(searchMarker) map.removeLayer(searchMarker);
-      searchMarker = L.circleMarker([lat, lon], {radius:9, color:'#fff', weight:3, fillColor:'#d95a1e', fillOpacity:1}).addTo(map).bindPopup("Ubicación buscada").openPopup();
+      searchMarker = L.circleMarker([lat, lon], {radius:9, color:'#fff', weight:3, fillColor:'#000', fillOpacity:1}).addTo(map).bindPopup("Ubicación buscada").openPopup();
       return;
     }
 
@@ -732,7 +813,7 @@
         const lat = parseFloat(data[0].lat), lon = parseFloat(data[0].lon);
         map.setView([lat, lon], 17);
         if(searchMarker) map.removeLayer(searchMarker);
-        searchMarker = L.circleMarker([lat, lon], {radius:9, color:'#fff', weight:3, fillColor:'#d95a1e', fillOpacity:1}).addTo(map).bindPopup(data[0].display_name).openPopup();
+        searchMarker = L.circleMarker([lat, lon], {radius:9, color:'#fff', weight:3, fillColor:'#000', fillOpacity:1}).addTo(map).bindPopup(data[0].display_name).openPopup();
       } else {
         alert("No se ha encontrado esa dirección. Prueba a ser más concreto (calle, número, población) o escribe las coordenadas directamente (ej: 36.50, -4.75).");
       }
@@ -866,7 +947,7 @@
     await stopPresence();
     if(realtimeChannel){await supabaseClient.removeChannel(realtimeChannel);realtimeChannel=null;}
     await supabaseClient.auth.signOut();
-    currentUser=null;currentProfile=null;obras=[];
+    currentUser=null;currentProfile=null;obras=[];alertShownThisSession=false;alertFilterActive=false;
     $('app').style.display='none';$('auth-screen').style.display='flex';
     $('login-password').value='';renderAll();
   }
@@ -875,6 +956,7 @@
     const {data,error}=await supabaseClient.from('obras').select('*').order('creado',{ascending:false});
     if(error){console.error(error);alert('No se pudieron cargar las obras desde Supabase.\n\n'+error.message);return;}
     obras=data||[]; renderAll();
+    if(!alertShownThisSession && !currentProfile?.debeCambiarPassword){ alertShownThisSession=true; openAlertModal(); }
   }
 
   function startRealtimeSync(){
@@ -1416,17 +1498,26 @@
   function renderMarkers(){
     Object.values(markersById).forEach(m => map.removeLayer(m));
     markersById = {};
+    alertBadges.forEach(b => map.removeLayer(b));
+    alertBadges = [];
     obras.forEach(obra => {
       if(!Number.isFinite(Number(obra.lat)) || !Number.isFinite(Number(obra.lon))) return;
       const color = ESTADO_COLOR[obra.estado] || ESTADO_COLOR.PENDIENTE;
+      const dAlerta = alertaDe(obra);   // null = sin alerta
+      const late = dAlerta !== null && dAlerta < 0;
       const marker = L.circleMarker([obra.lat, obra.lon], {
-        radius: 8, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1
+        radius: 8,
+        color: dAlerta === null ? '#fff' : (late ? '#d62020' : '#f2a900'),   // halo
+        weight: 2,
+        fillColor: color, fillOpacity: 1
       }).addTo(map);
+      if(dAlerta !== null) marker.bringToFront();
 
       const popupDiv = document.createElement('div');
       popupDiv.innerHTML = `
         <div class="popup-title">${escapeHtml(obra.direccion || 'Sin dirección')}</div>
         <div class="popup-meta">${escapeHtml(obra.poblacion || '')} · ${escapeHtml(obra.tecnico || 'sin técnico')}</div>
+        ${dAlerta !== null ? `<div class="popup-replanteo" style="margin:4px 0 6px;font-size:12px;font-weight:700;color:${late ? '#d62020' : '#b07a00'};">⚠ Próx. replanteo: ${formatFechaISO(obra.fechaReplanteo)} (${textoDias(dAlerta)})</div>` : ''}
         <select class="popup-select" data-id="${obra.id}">
           <option value="NUEVA" ${obra.estado==='NUEVA'?'selected':''}>Nueva</option>
           <option value="PENDIENTE" ${obra.estado==='PENDIENTE'?'selected':''}>Pendiente</option>
@@ -1461,6 +1552,14 @@
 
       marker.bindPopup(popupDiv);
       markersById[obra.id] = marker;
+      if(dAlerta !== null){
+        const badge = L.marker([obra.lat, obra.lon], {
+          icon: L.divIcon({className:'pin-alert' + (late ? ' late' : ''), html:'<span>!</span>', iconSize:[16,18], iconAnchor:[8,27]}),
+          keyboard:false, zIndexOffset:500
+        }).addTo(map);
+        badge.on('click', () => marker.openPopup());
+        alertBadges.push(badge);
+      }
     });
   }
 
@@ -1492,13 +1591,104 @@
     selP.value = curP; selT.value = curT;
   }
 
+  // ---------- ALERTAS DE PRÓXIMO REPLANTEO ----------
+  const ALERTA_DIAS = 10;
+  const ESTADOS_SIN_ALERTA = ['TERMINADO','DESCARTADA'];
+  let alertFilterActive = false;
+  let alertShownThisSession = false;
+
+  function diasHasta(iso){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return null; // texto libre: no se puede calcular
+    const [y,m,d] = iso.split('-').map(Number);
+    const h = new Date();
+    return Math.round((Date.UTC(y,m-1,d) - Date.UTC(h.getFullYear(),h.getMonth(),h.getDate())) / 86400000);
+  }
+  function textoDias(d){
+    if(d === 0) return 'hoy';
+    if(d === 1) return 'mañana';
+    if(d > 1) return `en ${d} días`;
+    if(d === -1) return 'vencida ayer';
+    return `vencida hace ${-d} días`;
+  }
+  function alertaDe(o){   // días hasta el replanteo si hay alerta; null si no
+    if(ESTADOS_SIN_ALERTA.includes(o.estado)) return null;
+    const d = diasHasta(o.fechaReplanteo);
+    return (d !== null && d <= ALERTA_DIAS) ? d : null;
+  }
+  function obrasConAlerta(){
+    return obras
+      .map(o => ({o, dias: ESTADOS_SIN_ALERTA.includes(o.estado) ? null : diasHasta(o.fechaReplanteo)}))
+      .filter(x => x.dias !== null && x.dias <= ALERTA_DIAS)
+      .sort((a,b) => a.dias - b.dias);
+  }
+  function replanteoCell(o){
+    const f = o.fechaReplanteo;
+    if(!f) return `<td class="mono" data-label="Próx. replanteo">—</td>`;
+    const d = ESTADOS_SIN_ALERTA.includes(o.estado) ? null : diasHasta(f);
+    if(diasHasta(f) === null) return `<td class="mono" data-label="Próx. replanteo">${escapeHtml(f)}</td>`;
+    const txt = formatFechaISO(f);
+    if(d !== null && d <= ALERTA_DIAS){
+      return `<td class="mono ${d < 0 ? 'fecha-late' : 'fecha-soon'}" data-label="Próx. replanteo">${txt}<span class="fecha-sub">${textoDias(d)}</span></td>`;
+    }
+    return `<td class="mono" data-label="Próx. replanteo">${txt}</td>`;
+  }
+  function renderAlertPill(){
+    const pill = $('alert-pill');
+    if(!pill) return;
+    const n = obrasConAlerta().length;
+    if(n === 0){ alertFilterActive = false; pill.classList.remove('show','active'); return; }
+    pill.innerHTML = `⚠ ${n}<span class="alert-word"> replanteo${n===1?'':'s'}</span>`;
+    pill.title = alertFilterActive
+      ? 'Pulsa para quitar el filtro'
+      : `${n} obra${n===1?'':'s'} con replanteo en ${ALERTA_DIAS} días o menos (o vencido). Pulsa para filtrar la lista.`;
+    pill.classList.add('show');
+    pill.classList.toggle('active', alertFilterActive);
+  }
+  function closeAlertModal(){ $('alert-overlay').classList.remove('show'); }
+  function openAlertModal(){
+    const list = obrasConAlerta();
+    if(list.length === 0) return;
+    $('alert-sub').textContent = `${list.length} obra${list.length===1?'':'s'} con replanteo en ${ALERTA_DIAS} días o menos`;
+    $('alert-list').innerHTML = list.map(({o,dias}) => `
+      <div class="alert-item${dias<0?' late':''}">
+        <div class="alert-info">
+          <b>${escapeHtml(o.direccion||'Sin dirección')}</b>
+          <span>${escapeHtml(o.poblacion||'—')} · ${formatFechaISO(o.fechaReplanteo)} · ${textoDias(dias)}</span>
+        </div>
+        <button class="btn-primary" data-id="${o.id}">Ver en mapa</button>
+      </div>`).join('');
+    $('alert-list').querySelectorAll('button[data-id]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const o = obras.find(x => String(x.id) === btn.dataset.id);
+        closeAlertModal();
+        if(o && Number.isFinite(Number(o.lat)) && Number.isFinite(Number(o.lon))){
+          map.setView([o.lat,o.lon], 17);
+          markersById[o.id]?.openPopup();
+          window.scrollTo({top:0, behavior:'smooth'});
+        }
+      });
+    });
+    $('alert-overlay').classList.add('show');
+  }
+  $('alert-cancel-btn').addEventListener('click', closeAlertModal);
+  $('alert-overlay').addEventListener('click', e => { if(e.target === $('alert-overlay')) closeAlertModal(); });
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') closeAlertModal(); });
+  $('alert-pill').addEventListener('click', () => {
+    alertFilterActive = !alertFilterActive;
+    renderAlertPill();
+    renderTable();
+    if(alertFilterActive) $('panel').scrollIntoView({behavior:'smooth', block:'start'});
+  });
+
   function getFiltered(){
     const q = $('f-search').value.trim().toLowerCase();
     const fp = $('f-poblacion').value;
     const ft = $('f-tecnico').value;
     const fe = $('f-estado').value;
     const fd = $('f-fecha').value; // yyyy-mm-dd, filtra por fecha de última visita
+    const alertIds = alertFilterActive ? new Set(obrasConAlerta().map(x=>x.o.id)) : null;
     return obras.filter(o => {
+      if(alertIds && !alertIds.has(o.id)) return false;
       if(fp && o.poblacion !== fp) return false;
       if(ft && o.tecnico !== ft) return false;
       if(fe && o.estado !== fe) return false;
@@ -1528,7 +1718,8 @@
         <td>${escapeHtml(o.direccion||'—')}</td>
         <td><span class="badge${o.estado==='NUEVA'?' nueva':''}" style="background:${ESTADO_COLOR[o.estado]}">${ESTADO_LABEL[o.estado]||o.estado}</span></td>
         <td>${escapeHtml(o.tecnico||'—')}</td>
-        <td class="mono">${o.fechaVisita ? formatFechaISO(o.fechaVisita) : '—'}</td>
+        <td class="mono" data-label="Última visita">${o.fechaVisita ? formatFechaISO(o.fechaVisita) : '—'}</td>
+        ${replanteoCell(o)}
         <td class="obs-cell" title="${escapeHtml(comentariosToPlainText(o.observaciones))}">${obsPreview(o.observaciones)}</td>
         <td><div class="row-actions">
           <button data-action="ver">Ver en mapa</button>
@@ -1540,7 +1731,7 @@
     wrap.innerHTML = `
       <table>
         <thead><tr>
-          <th>Población</th><th>Dirección</th><th>Estado</th><th>Técnico</th><th>Fecha</th><th>Observaciones</th><th></th>
+          <th>Población</th><th>Dirección</th><th>Estado</th><th>Técnico</th><th>Última visita</th><th>Próx. replanteo</th><th>Observaciones</th><th></th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -1575,6 +1766,7 @@
   }
 
   function renderAll(){
+    renderAlertPill();
     renderStats();
     populateFilterOptions();
     renderMarkers();
