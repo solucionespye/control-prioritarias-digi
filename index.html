@@ -1500,7 +1500,7 @@
     markersById = {};
     alertBadges.forEach(b => map.removeLayer(b));
     alertBadges = [];
-    obras.forEach(obra => {
+    getFiltered().forEach(obra => {   // el mapa respeta los mismos filtros que la tabla
       if(!Number.isFinite(Number(obra.lat)) || !Number.isFinite(Number(obra.lon))) return;
       const color = ESTADO_COLOR[obra.estado] || ESTADO_COLOR.PENDIENTE;
       const dAlerta = alertaDe(obra);   // null = sin alerta
@@ -1661,6 +1661,10 @@
       btn.addEventListener('click', () => {
         const o = obras.find(x => String(x.id) === btn.dataset.id);
         closeAlertModal();
+        resetFiltros(true);   // sin filtros para que el marcador siempre esté visible
+        renderAlertPill();
+        renderMarkers();
+        renderTable();
         if(o && Number.isFinite(Number(o.lat)) && Number.isFinite(Number(o.lon))){
           map.setView([o.lat,o.lon], 17);
           markersById[o.id]?.openPopup();
@@ -1675,7 +1679,9 @@
   document.addEventListener('keydown', e => { if(e.key === 'Escape') closeAlertModal(); });
   $('alert-pill').addEventListener('click', () => {
     alertFilterActive = !alertFilterActive;
+    if(alertFilterActive) resetFiltros(false);   // que el resto de filtros no oculte alertas
     renderAlertPill();
+    renderMarkers();
     renderTable();
     if(alertFilterActive) $('panel').scrollIntoView({behavior:'smooth', block:'start'});
   });
@@ -1765,6 +1771,18 @@
     });
   }
 
+  function renderFiltros(){ renderMarkers(); renderTable(); }
+
+  // Limpia los filtros de búsqueda/población/técnico/estado/día (y, si se pide, el filtro de alertas)
+  function resetFiltros(quitarAlertas){
+    $('f-search').value = '';
+    $('f-poblacion').value = '';
+    $('f-tecnico').value = '';
+    $('f-estado').value = '';
+    $('f-fecha').value = '';
+    if(quitarAlertas) alertFilterActive = false;
+  }
+
   function renderAll(){
     renderAlertPill();
     renderStats();
@@ -1774,10 +1792,10 @@
   }
 
   ['f-search','f-poblacion','f-tecnico','f-estado','f-fecha'].forEach(id=>{
-    $(id).addEventListener('input', renderTable);
-    $(id).addEventListener('change', renderTable);
+    $(id).addEventListener('input', renderFiltros);
+    $(id).addEventListener('change', renderFiltros);
   });
-  $('f-fecha-clear').addEventListener('click', () => { $('f-fecha').value = ""; renderTable(); });
+  $('f-fecha-clear').addEventListener('click', () => { $('f-fecha').value = ""; renderFiltros(); });
 
   // ---------- IMPORT ----------
   function excelDateToISO(value){
