@@ -218,6 +218,7 @@
     display:none;align-items:center;justify-content:center;z-index:1000;padding:16px;
   }
   .overlay.show{display:flex;}
+  #password-overlay,#recovery-overlay{z-index:3500;}
   .modal{
     background:#fff;width:100%;max-width:480px;max-height:88vh;overflow:auto;
     border-radius:5px;border-top:4px solid var(--orange);
@@ -455,7 +456,8 @@
       <div class="field"><label>Email</label><input type="email" id="login-email" autocomplete="username"></div>
       <div class="field"><label>Contraseña</label><input type="password" id="login-password" autocomplete="current-password"></div>
       <div class="auth-error" id="login-error"></div>
-      <div class="auth-actions"><button class="btn-primary" id="login-btn">Entrar</button></div>
+      <div class="auth-info" id="login-info" style="display:none;color:#15803d;font-size:13px;margin:4px 0;"></div>
+      <div class="auth-actions" style="justify-content:space-between;align-items:center;"><button type="button" id="forgot-btn" style="background:none;border:none;color:#2563eb;cursor:pointer;font-size:13px;padding:0;text-decoration:underline;">He olvidado mi contraseña</button><button class="btn-primary" id="login-btn">Entrar</button></div>
     </div>
   </div>
 </div>
@@ -543,6 +545,22 @@
       <div class="auth-error" id="password-error"></div>
     </div>
     <div class="modal-actions"><button class="btn-secondary" id="password-cancel-btn">Cancelar</button><button class="btn-primary" id="password-save-btn">Guardar contraseña</button></div>
+  </div>
+</div>
+
+<!-- MODAL: recuperación de contraseña con código -->
+<div class="overlay" id="recovery-overlay">
+  <div class="modal">
+    <div class="modal-head"><h2>Recuperar contraseña</h2><p>Te hemos enviado un código por email. Escríbelo aquí y elige tu nueva contraseña.</p></div>
+    <div class="modal-body">
+      <div class="field"><label>Email</label><input type="email" id="rec-email" readonly></div>
+      <div class="field"><label>Código recibido por email</label><input type="text" id="rec-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456"></div>
+      <div class="field"><label>Nueva contraseña</label><input type="password" id="rec-p1" autocomplete="new-password"></div>
+      <div class="field"><label>Repetir nueva contraseña</label><input type="password" id="rec-p2" autocomplete="new-password"></div>
+      <div class="required-note">Mínimo 8 caracteres. El código caduca en 1 hora.</div>
+      <div class="auth-error" id="rec-error"></div>
+    </div>
+    <div class="modal-actions"><button class="btn-secondary" id="rec-cancel-btn">Cancelar</button><button class="btn-primary" id="rec-save-btn">Cambiar contraseña</button></div>
   </div>
 </div>
 
@@ -832,6 +850,8 @@
   let realtimeChannel = null;
   let presenceChannel = null;
   let forcePasswordChange = false;
+  let recoveryMode = (location.hash.includes('type=recovery'));
+  const APP_URL = 'https://solucionespye.github.io/control-prioritarias-digi/';
 
   function isSuperadmin(){ return currentProfile?.rol === 'superadmin' && currentProfile?.activo === true; }
   function isCoordinator(){ return currentProfile?.rol === 'coordinador' && currentProfile?.activo === true; }
@@ -874,6 +894,53 @@
       console.error(e);
       showAuthError(e.message || 'No se ha podido iniciar sesión.');
     }finally{btn.disabled=false;btn.textContent='Entrar';}
+  }
+
+  async function forgotPassword(){
+    showAuthError('');
+    const info=$('login-info');info.style.display='none';
+    const email=$('login-email').value.trim();
+    if(!email){showAuthError('Escribe tu email arriba y pulsa de nuevo "He olvidado mi contraseña".');return;}
+    const btn=$('forgot-btn');btn.disabled=true;
+    try{
+      const {error}=await supabaseClient.auth.resetPasswordForEmail(email,{redirectTo:APP_URL});
+      if(error)throw error;
+      $('rec-email').value=email;$('rec-code').value='';$('rec-p1').value='';$('rec-p2').value='';$('rec-error').textContent='';
+      $('recovery-overlay').classList.add('show');
+    }catch(e){console.error(e);showAuthError(e.message||'No se pudo enviar el email de recuperación.');}
+    finally{btn.disabled=false;}
+  }
+
+  async function recoverWithCode(){
+    const err=m=>{$('rec-error').textContent=m;$('rec-error').style.display=m?'block':'none';};
+    err('');
+    const email=$('rec-email').value.trim(),code=$('rec-code').value.replace(/\s+/g,''),p1=$('rec-p1').value,p2=$('rec-p2').value;
+    if(!/^\d{6,10}$/.test(code)){err('Escribe el código numérico que recibiste por email.');return;}
+    if(p1.length<8){err('La contraseña debe tener al menos 8 caracteres.');return;}
+    if(p1!==p2){err('Las contraseñas no coinciden.');return;}
+    const btn=$('rec-save-btn');btn.disabled=true;btn.textContent='Guardando...';
+    recoveryMode=true;
+    try{
+      const {error:e1}=await supabaseClient.auth.verifyOtp({email,token:code,type:'recovery'});
+      if(e1)throw new Error(/expired|invalid/i.test(e1.message||'')?'El código no es correcto o ha caducado. Pide uno nuevo con "He olvidado mi contraseña".':e1.message);
+      const {error:e2}=await supabaseClient.auth.updateUser({password:p1});
+      if(e2)throw e2;
+      try{await supabaseClient.rpc('marcar_password_cambiada');}catch(_){}
+      await supabaseClient.auth.signOut();
+      $('recovery-overlay').classList.remove('show');
+      recoveryMode=false;
+      $('login-password').value='';
+      const info=$('login-info');info.textContent='Contraseña cambiada correctamente. Ya puedes entrar con la nueva contraseña.';info.style.display='block';
+    }catch(e){console.error(e);recoveryMode=false;err(e.message||'No se pudo cambiar la contraseña.');}
+    finally{btn.disabled=false;btn.textContent='Cambiar contraseña';}
+  }
+
+  function startRecovery(){
+    recoveryMode=true;
+    $('auth-screen').style.display='flex';
+    $('app').style.display='none';
+    openPasswordModal(true);
+    $('password-title').textContent='Crear nueva contraseña';
   }
 
   async function activateAuthenticatedUser(user){
@@ -2110,6 +2177,13 @@
     try{
       const {error}=await supabaseClient.auth.updateUser({password:p1});
       if(error)throw error;
+      if(recoveryMode){
+        try{await supabaseClient.rpc('marcar_password_cambiada');}catch(_){}
+        await supabaseClient.auth.signOut();
+        alert('Contraseña cambiada correctamente. Ya puedes iniciar sesión con la nueva contraseña.');
+        location.replace(APP_URL);
+        return;
+      }
       const {error:rpcError}=await supabaseClient.rpc('marcar_password_cambiada');
       if(rpcError)throw rpcError;
       currentProfile.debeCambiarPassword=false;forcePasswordChange=false;
@@ -2192,6 +2266,9 @@
   // ---------- INIT ----------
 
   $('login-btn').addEventListener('click',login);
+  $('forgot-btn').addEventListener('click',forgotPassword);
+  $('rec-save-btn').addEventListener('click',recoverWithCode);
+  $('rec-cancel-btn').addEventListener('click',()=>$('recovery-overlay').classList.remove('show'));
   $('login-password').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
   $('logout-btn').addEventListener('click',logout);
   $('change-password-btn').addEventListener('click',()=>openPasswordModal(false));
@@ -2203,12 +2280,21 @@
 
   (async function init(){
     renderAll();
+    if(/error_code=|error=access_denied/.test(location.hash)){
+      const m=/error_code=([^&]+)/.exec(location.hash);
+      const code=m?decodeURIComponent(m[1]):'';
+      showAuthError(code==='otp_expired'?'El enlace de recuperación ha caducado o ya se ha usado. Pulsa "He olvidado mi contraseña" para recibir uno nuevo y ábrelo directamente.':'El enlace no es válido. Solicita uno nuevo con "He olvidado mi contraseña".');
+      history.replaceState(null,'',location.pathname);
+    }
     const {data}=await supabaseClient.auth.getSession();
-    if(data?.session?.user){
+    if(recoveryMode && data?.session?.user){startRecovery();}
+    else if(data?.session?.user){
       try{await activateAuthenticatedUser(data.session.user);}catch(e){console.error(e);await supabaseClient.auth.signOut();showAuthError(e.message||'La sesión no es válida.');}
     }
     supabaseClient.auth.onAuthStateChange(async (event,session)=>{
       if(event==='SIGNED_OUT'){return;}
+      if(event==='PASSWORD_RECOVERY'){startRecovery();return;}
+      if(recoveryMode)return;
       if(event==='SIGNED_IN' && session?.user && !currentUser){
         try{await activateAuthenticatedUser(session.user);}catch(e){console.error(e);await supabaseClient.auth.signOut();showAuthError(e.message||'La cuenta no está autorizada.');}
       }
