@@ -123,6 +123,7 @@
   }
 
   /* ---------- PANEL ---------- */
+  #f-input-provincia,#f-input-poblacion{text-transform:uppercase;}
   #panel{flex:1;padding:16px 20px 60px;max-width:1180px;width:100%;margin:0 auto;}
   .filters{
     display:flex;gap:10px;flex-wrap:wrap;align-items:center;
@@ -283,9 +284,10 @@
     .filters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;align-items:stretch;}
     .filters input, .filters select{width:100%;min-width:0;padding:10px 9px;font-size:13px;}
     .filters input[type=text]{grid-column:1 / -1;flex:none;}
-    #f-poblacion{grid-column:1;}
-    #f-tecnico{grid-column:2;}
-    #f-estado{grid-column:1 / -1;}
+    #f-provincia{grid-column:1;}
+    #f-poblacion{grid-column:2;}
+    #f-tecnico{grid-column:1;}
+    #f-estado{grid-column:2;}
     .date-filter-row{grid-column:1 / -1;width:100%;display:flex;align-items:center;gap:8px;}
     .date-filter-label{flex:1;min-width:0;width:auto;display:flex;align-items:center;gap:6px;}
     .date-filter-label input{flex:1;min-width:0;width:100%;height:42px;box-sizing:border-box;padding:9px 8px;}
@@ -495,6 +497,7 @@
   <div id="panel">
     <div class="filters">
       <input type="text" id="f-search" placeholder="Buscar por dirección o población...">
+      <select id="f-provincia"><option value="">Provincia: todas</option></select>
       <select id="f-poblacion"><option value="">Población: todas</option></select>
       <select id="f-tecnico"><option value="">Técnico: todos</option></select>
       <select id="f-estado">
@@ -599,9 +602,15 @@
       <p class="geo-status" id="geo-status"></p>
       <div class="field-row">
         <div class="field">
+          <label>Provincia</label>
+          <input type="text" id="f-input-provincia">
+        </div>
+        <div class="field">
           <label>Población</label>
           <input type="text" id="f-input-poblacion">
         </div>
+      </div>
+      <div class="field-row">
         <div class="field">
           <label>% Construcción</label>
           <input type="number" id="f-input-pct" min="0" max="100" placeholder="0–100">
@@ -1022,7 +1031,7 @@
   async function startSupabaseSync(){
     const {data,error}=await supabaseClient.from('obras').select('*').order('creado',{ascending:false});
     if(error){console.error(error);alert('No se pudieron cargar las obras desde Supabase.\n\n'+error.message);return;}
-    obras=data||[]; renderAll();
+    obras=(data||[]).map(o=>({...o, provincia:(o.provincia||'').toLocaleUpperCase('es'), poblacion:(o.poblacion||'').toLocaleUpperCase('es')})); renderAll();
     if(!alertShownThisSession && !currentProfile?.debeCambiarPassword){ alertShownThisSession=true; openAlertModal(); }
   }
 
@@ -1078,7 +1087,8 @@
       const numero = a.house_number || "";
       const poblacion = a.town || a.village || a.city || a.municipality || "";
       const direccion = [calle, numero].filter(Boolean).join(" ");
-      return { direccion: direccion || data.display_name || "", poblacion };
+      const provincia = a.province || a.state_district || "";
+      return { direccion: direccion || data.display_name || "", poblacion, provincia };
     }catch(e){
       return null;
     }
@@ -1391,6 +1401,7 @@
 
   // ---------- MODAL ----------
   function resetForm(){
+    $('f-input-provincia').value = "";
     $('f-input-poblacion').value = "";
     $('f-input-pct').value = "";
     $('f-input-gescal26').value = "";
@@ -1434,6 +1445,7 @@
     $('overlay').classList.add('show');
 
     if(existing){
+      $('f-input-provincia').value = existing.provincia || "";
       $('f-input-poblacion').value = existing.poblacion || "";
       $('f-input-pct').value = existing.pct || "";
       $('f-input-gescal26').value = existing.gescal26 || "";
@@ -1452,7 +1464,8 @@
       const geo = await reverseGeocode(latlng.lat, latlng.lng);
       if(geo && geo.direccion){
         $('f-input-direccion').value = geo.direccion;
-        $('f-input-poblacion').value = geo.poblacion;
+        $('f-input-poblacion').value = (geo.poblacion || "").toLocaleUpperCase('es');
+        $('f-input-provincia').value = (geo.provincia || "").toLocaleUpperCase('es');
         $('geo-status').textContent = "Dirección obtenida automáticamente — revísala antes de guardar.";
       } else {
         $('geo-status').textContent = "La búsqueda automática de dirección no está disponible aquí. Escríbela a mano (las coordenadas ya han quedado registradas).";
@@ -1521,7 +1534,8 @@
       id: editingId || ('o' + Date.now() + Math.random().toString(36).slice(2,7)),
       lat: latFinal,
       lon: lonFinal,
-      poblacion: $('f-input-poblacion').value.trim(),
+      provincia: $('f-input-provincia').value.trim().toLocaleUpperCase('es'),
+      poblacion: $('f-input-poblacion').value.trim().toLocaleUpperCase('es'),
       direccion,
       pct: $('f-input-pct').value ? Number($('f-input-pct').value) : null,
       gescal26: $('f-input-gescal26').value.trim(),
@@ -1649,7 +1663,13 @@
   }
 
   function populateFilterOptions(){
-    const poblaciones = [...new Set(obras.map(o=>o.poblacion).filter(Boolean))].sort();
+    const selPr = $('f-provincia');
+    const curPr = selPr.value;
+    const provincias = [...new Set(obras.map(o=>o.provincia).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+    selPr.innerHTML = '<option value="">Provincia: todas</option>' + provincias.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+    selPr.value = curPr;
+    const obrasProv = selPr.value ? obras.filter(o=>o.provincia === selPr.value) : obras;
+    const poblaciones = [...new Set(obrasProv.map(o=>o.poblacion).filter(Boolean))].sort();
     const tecnicos = [...new Set(obras.map(o=>o.tecnico).filter(Boolean))].sort();
     const selP = $('f-poblacion'), selT = $('f-tecnico');
     const curP = selP.value, curT = selT.value;
@@ -1757,11 +1777,13 @@
     const q = $('f-search').value.trim().toLowerCase();
     const fp = $('f-poblacion').value;
     const ft = $('f-tecnico').value;
+    const fpv = $('f-provincia').value;
     const fe = $('f-estado').value;
     const fd = $('f-fecha').value; // yyyy-mm-dd, filtra por fecha de última visita
     const alertIds = alertFilterActive ? new Set(obrasConAlerta().map(x=>x.o.id)) : null;
     return obras.filter(o => {
       if(alertIds && !alertIds.has(o.id)) return false;
+      if(fpv && o.provincia !== fpv) return false;
       if(fp && o.poblacion !== fp) return false;
       if(ft && o.tecnico !== ft) return false;
       if(fe && o.estado !== fe) return false;
@@ -1843,6 +1865,7 @@
   // Limpia los filtros de búsqueda/población/técnico/estado/día (y, si se pide, el filtro de alertas)
   function resetFiltros(quitarAlertas){
     $('f-search').value = '';
+    $('f-provincia').value = '';
     $('f-poblacion').value = '';
     $('f-tecnico').value = '';
     $('f-estado').value = '';
@@ -1858,7 +1881,8 @@
     renderTable();
   }
 
-  ['f-search','f-poblacion','f-tecnico','f-estado','f-fecha'].forEach(id=>{
+  $('f-provincia').addEventListener('change', populateFilterOptions);
+  ['f-search','f-provincia','f-poblacion','f-tecnico','f-estado','f-fecha'].forEach(id=>{
     $(id).addEventListener('input', renderFiltros);
     $(id).addEventListener('change', renderFiltros);
   });
@@ -1944,7 +1968,8 @@
       const fila = row.__filaExcel;
       const gescal26 = String(row["GESCAL26"] || "").trim();
       const direccion = String(row["DIRECCION"] || "").trim();
-      const poblacion = String(row["POBLACION"] || "").trim();
+      const poblacion = String(row["POBLACION"] || "").trim().toLocaleUpperCase('es');
+      const provinciaExcel = String(row["PROVINCIA"] || "").trim().toLocaleUpperCase('es');
       const identificador = gescal26 || direccion || `fila ${fila}`;
 
       try{
@@ -1997,6 +2022,7 @@
           id: existingId || ('o' + Date.now() + Math.random().toString(36).slice(2,8)),
           lat: coords ? coords.lat : (existing?.lat ?? null),
           lon: coords ? coords.lon : (existing?.lon ?? null),
+          provincia: provinciaExcel || (existing?.provincia || "").toLocaleUpperCase('es'),
           poblacion,
           direccion,
           pct: normalizePct(row["% CONSTRUCCION"]),
@@ -2128,6 +2154,7 @@
   function buildRows(){
     const list = getFiltered().length ? getFiltered() : obras;
     return list.map(o => ({
+      "PROVINCIA": o.provincia || "",
       "POBLACION": o.poblacion || "",
       "GESCAL26": o.gescal26 || "",
       "DIRECCION": o.direccion || "",
@@ -2149,7 +2176,7 @@
     const rows = buildRows();
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [
-      {wch:16},{wch:14},{wch:34},{wch:12},{wch:14},{wch:14},{wch:14},
+      {wch:14},{wch:16},{wch:14},{wch:34},{wch:12},{wch:14},{wch:14},{wch:14},
       {wch:18},{wch:26},{wch:14},{wch:34},{wch:14},{wch:16},{wch:16}
     ];
     const wb = XLSX.utils.book_new();
