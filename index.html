@@ -241,6 +241,9 @@
     padding:14px 20px;border-top:1px solid var(--line);
     display:flex;justify-content:flex-end;gap:10px;
   }
+  /* Modal de replanteos próximos: botón Cancelar arriba a la derecha (cabecera fija al hacer scroll) */
+  #alert-overlay .modal-head{position:sticky;top:0;background:#fff;z-index:2;padding-right:110px;}
+  #alert-overlay .alert-cancel-top{position:absolute;top:12px;right:14px;padding:6px 12px;}
   .btn-secondary{background:#fff;border:1px solid var(--line);padding:9px 16px;border-radius:3px;cursor:pointer;font-size:13px;font-weight:600;color:var(--ink-soft);}
   .btn-primary{background:var(--orange);border:none;color:#fff;padding:9px 18px;border-radius:3px;cursor:pointer;font-size:13px;font-weight:700;}
   .btn-primary:disabled{opacity:.5;cursor:default;}
@@ -532,9 +535,8 @@
 <!-- MODAL: cambio obligatorio / cambio de contraseña -->
 <div class="overlay" id="alert-overlay">
   <div class="modal">
-    <div class="modal-head"><h2>⚠ Replanteos próximos</h2><p id="alert-sub"></p></div>
+    <div class="modal-head"><h2>⚠ Replanteos próximos</h2><p id="alert-sub"></p><button class="btn-secondary alert-cancel-top" id="alert-cancel-btn">Cancelar</button></div>
     <div class="modal-body" id="alert-list"></div>
-    <div class="modal-actions"><button class="btn-secondary" id="alert-cancel-btn">Cancelar</button></div>
   </div>
 </div>
 
