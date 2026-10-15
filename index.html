@@ -659,7 +659,7 @@
         </div>
         <div class="field">
           <label>Entrega de llaves</label>
-          <input type="text" id="f-input-entrega-llaves" placeholder="Fecha, NA, NO DISPONIBLE...">
+          <input type="date" id="f-input-entrega-llaves" required>
         </div>
       </div>
       <div class="field">
@@ -1457,7 +1457,7 @@
       $('f-input-promotor').value = existing.promotor || "";
       $('f-input-contacto').value = existing.contacto || "";
       $('f-input-fecha-replanteo').value = existing.fechaReplanteo || "";
-      $('f-input-entrega-llaves').value = existing.entregaLlaves || "";
+      $('f-input-entrega-llaves').value = excelDateToISO(existing.entregaLlaves);
       $('f-input-fecha-visita').value = existing.fechaVisita || "";
       editingComentarios = parseComentarios(existing.observaciones);
       renderComentarios();
@@ -1488,6 +1488,11 @@
   $('save-btn').addEventListener('click', async () => {
     const direccion = $('f-input-direccion').value.trim();
     if(!direccion){ alert("Introduce al menos la dirección."); return; }
+    if(!$('f-input-entrega-llaves').value){
+      alert("Campo «Entrega de llaves» vacío. Introduce una fecha para poder guardar la obra.");
+      $('f-input-entrega-llaves').focus();
+      return;
+    }
     if(!$('f-input-fecha-visita').value){
       alert("Campo «Fecha de última visita» vacío. Rellénalo para poder guardar la obra.");
       $('f-input-fecha-visita').focus();
@@ -1546,7 +1551,7 @@
       promotor: $('f-input-promotor').value.trim(),
       contacto: $('f-input-contacto').value.trim(),
       fechaReplanteo: $('f-input-fecha-replanteo').value,
-      entregaLlaves: $('f-input-entrega-llaves').value.trim(),
+      entregaLlaves: $('f-input-entrega-llaves').value,
       fechaVisita: $('f-input-fecha-visita').value,
       observaciones: comentariosToString(editingComentarios),
       creado: editingId ? (obras.find(o=>o.id===editingId)?.creado || now.toISOString()) : now.toISOString(),
@@ -2034,7 +2039,7 @@
           promotor: String(row["PROMOTOR"] || "").trim(),
           contacto: String(row["CONTACTO"] || "").trim(),
           fechaReplanteo: excelDateToISO(row["FECHA PROXIMO REPLANTEO"]),
-          entregaLlaves: String(row["ENTREGA DE LLAVES"] || "").trim(),
+          entregaLlaves: excelDateToISO(row["ENTREGA DE LLAVES"]),
           fechaVisita: excelDateToISO(row["FECHA DE ULTIMA VISITA"]),
           observaciones: comentariosToString(parseComentarios(row["OBSERVACIONES"])),
           creado: existing?.creado || now.toISOString()
@@ -2163,7 +2168,7 @@
       "% CONSTRUCCION": o.pct != null ? `${o.pct}%` : "",
       "MES FECHA PROXIMO REPLANTEO": mesDeFecha(o.fechaReplanteo),
       "FECHA PROXIMO REPLANTEO": formatFechaISO(o.fechaReplanteo),
-      "ENTREGA DE LLAVES": o.entregaLlaves || "",
+      "ENTREGA DE LLAVES": excelDateToISO(o.entregaLlaves) ? formatFechaISO(excelDateToISO(o.entregaLlaves)) : (o.entregaLlaves || ""),
       "PROMOTOR": o.promotor || "",
       "LINK DE GOOGLE": (Number.isFinite(Number(o.lat)) && Number.isFinite(Number(o.lon))) ? `${o.lat}, ${o.lon}` : "",
       "CONTACTO": o.contacto || "",
