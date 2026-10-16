@@ -373,7 +373,11 @@
     tbody td[data-label]::before{content:attr(data-label) ": ";color:var(--ink-soft);font-weight:600;font-size:11.5px;}
   }
   #user-admin-btn{display:none;}
-  .users-modal{max-width:760px;}
+  .conn-state{display:inline-flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;}
+  .conn-state.on{color:var(--green);}
+  .conn-state.off{color:var(--gray);}
+  .conn-state.off .online-dot{background:#9aa3ad;animation:none;box-shadow:none;}
+  .users-modal{max-width:900px;}
 
   /* ---------- FOTOS (cámara / enviar a DS) ---------- */
   .fotos-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
@@ -874,6 +878,14 @@
   let currentProfile = null;
   let realtimeChannel = null;
   let presenceChannel = null;
+  let onlineUserIds = new Set();
+  function onlineBadge(id){
+    const on = onlineUserIds.has(id);
+    return `<span class="conn-state ${on?'on':'off'}"><span class="online-dot"></span>${on?'Conectado':'Desconectado'}</span>`;
+  }
+  function refreshUsersOnline(){
+    document.querySelectorAll('[data-online-cell]').forEach(td => { td.innerHTML = onlineBadge(td.dataset.onlineCell); });
+  }
   let forcePasswordChange = false;
   let recoveryMode = (location.hash.includes('type=recovery'));
   const APP_URL = 'https://solucionespye.github.io/control-prioritarias-digi/';
@@ -1006,6 +1018,8 @@
         const state = presenceChannel.presenceState();
         const nombres = Object.values(state).map(arr => arr[0]?.nombre).filter(Boolean).sort();
         setOnlineCount(Object.keys(state).length, nombres);
+        onlineUserIds = new Set(Object.keys(state));
+        refreshUsersOnline();
       })
       .subscribe(async status => {
         if(status === 'SUBSCRIBED'){
@@ -1032,6 +1046,7 @@
 
   async function stopPresence(){
     if(presenceChannel){ const ch = presenceChannel; presenceChannel = null; try{ await supabaseClient.removeChannel(ch); }catch(e){} }
+    onlineUserIds = new Set();
     setOnlineCount(0, []);
   }
 
@@ -2375,8 +2390,14 @@
       const data=await callAdminUsers({action:'list'});
       const users=data.users||[];
       if(!users.length){wrap.innerHTML='<div class="empty-state">No hay usuarios.</div>';return;}
-      wrap.innerHTML=`<table class="users-table"><thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${users.map(u=>`
-        <tr data-user-id="${escapeHtml(u.id)}"><td>${escapeHtml(u.nombre||'—')}</td><td>${escapeHtml(u.email||'—')}</td><td><span class="role-badge">${escapeHtml(u.rol||'—')}</span></td><td><span class="active-badge ${u.activo?'yes':'no'}">${u.activo?'Activo':'Inactivo'}</span></td><td><div class="user-row-actions">
+      const conteos={};
+      try{
+        const {data:cs,error:ce}=await supabaseClient.rpc('conexiones_por_usuario');
+        if(ce) throw ce;
+        (cs||[]).forEach(r=>{ conteos[r.usuario_id]=Number(r.total); });
+      }catch(e){ console.error('No se pudieron cargar las conexiones por usuario',e); }
+      wrap.innerHTML=`<table class="users-table"><thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th>Conexiones</th><th>Ahora</th><th>Acciones</th></tr></thead><tbody>${users.map(u=>`
+        <tr data-user-id="${escapeHtml(u.id)}"><td>${escapeHtml(u.nombre||'—')}</td><td>${escapeHtml(u.email||'—')}</td><td><span class="role-badge">${escapeHtml(u.rol||'—')}</span></td><td><span class="active-badge ${u.activo?'yes':'no'}">${u.activo?'Activo':'Inactivo'}</span></td><td class="mono">${conteos[u.id] ?? 0}</td><td data-online-cell="${escapeHtml(u.id)}">${onlineBadge(u.id)}</td><td><div class="user-row-actions">
         ${u.id === currentUser?.id
           ? `<span class="current-user-label">Cuenta actual</span><button data-user-action="edit">Modificar</button>`
           : `<button data-user-action="toggle">${u.activo?'Desactivar':'Activar'}</button><button data-user-action="edit">Modificar</button><button data-user-action="delete" class="danger">Eliminar</button>`
