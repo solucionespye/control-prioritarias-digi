@@ -1123,10 +1123,26 @@
     `).join('');
     vacio.style.display = editingFotos.length ? 'none' : '';
     sendBtn.disabled = !editingFotos.length;
+    updateSendBtn();
     cont.querySelectorAll('[data-remove-foto]').forEach(btn => {
       btn.addEventListener('click', () => removeFoto(btn.dataset.removeFoto));
     });
     renderCamStrip();
+  }
+
+  // Compartir en lotes: Chrome/Android solo admite 10 archivos por menú de compartir.
+  const FOTOS_LOTE = 10;
+  function fotosPendientes(){ return editingFotos.filter(f => !f.sent); }
+  function updateSendBtn(){
+    const btn = $('send-ds-btn');
+    if(!btn || btn.dataset.busy) return;
+    const total = editingFotos.length;
+    const pend = fotosPendientes().length;
+    if(total <= FOTOS_LOTE || pend === total || pend === 0){
+      btn.textContent = total > FOTOS_LOTE ? `Enviar a DS (${total} en ${Math.ceil(total / FOTOS_LOTE)} lotes)` : 'Enviar a DS';
+    } else {
+      btn.textContent = `Enviar siguientes (${Math.min(FOTOS_LOTE, pend)} de ${pend})`;
+    }
   }
 
   function addFotos(fileList){
@@ -1182,20 +1198,33 @@
 
   async function sendFotosToDS(){
     if(!editingFotos.length) return;
-    const files = editingFotos.map(f => f.file);
+    // Si ya se enviaron todas, empezar de nuevo desde la primera.
+    if(fotosPendientes().length === 0) editingFotos.forEach(f => { f.sent = false; });
+    const lote = fotosPendientes().slice(0, FOTOS_LOTE);
+    const files = lote.map(f => f.file);
     const direccion = $('f-input-direccion').value.trim() || 'obra';
+    const marcarEnviado = () => {
+      lote.forEach(f => { f.sent = true; });
+      updateSendBtn();
+      const restantes = fotosPendientes().length;
+      if(restantes > 0 && typeof showShareToast === 'function'){
+        showShareToast(`Lote enviado. Quedan ${restantes} fotos: pulsa de nuevo.`);
+      }
+    };
     if(window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function'){
       const btn = $('send-ds-btn');
-      const original = btn.textContent;
+      btn.dataset.busy = '1';
       btn.disabled = true; btn.textContent = 'Preparando...';
       try{
         await sendFotosViaApp(files, direccion);
+        marcarEnviado();
       }catch(e){
         console.error(e);
         alert('No se pudieron preparar las fotos para compartir.');
       }finally{
-        btn.textContent = original;
+        delete btn.dataset.busy;
         btn.disabled = !editingFotos.length;
+        updateSendBtn();
       }
       return;
     }
@@ -1206,6 +1235,7 @@
           title: 'Fotos — ' + direccion,
           text: 'Fotos de la obra: ' + direccion
         });
+        marcarEnviado();
       } else {
         alert('Este dispositivo/navegador no admite compartir fotos directamente. Guarda las fotos y súbelas a DS manualmente desde la galería.');
       }
