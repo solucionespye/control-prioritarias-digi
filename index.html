@@ -208,6 +208,16 @@
     padding:4px 8px;font-size:11.5px;cursor:pointer;color:var(--ink-soft);
   }
   .row-actions button:hover{border-color:var(--navy);color:var(--navy);}
+  .share-btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;}
+  .share-btn svg{flex:none;}
+  #share-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1a1a1a;color:#fff;padding:9px 16px;border-radius:4px;font-size:13px;z-index:99999;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;text-align:center;}
+  #share-toast.show{opacity:1;}
+  .modal-head{position:relative;}
+  .share-icon{position:absolute;top:10px;right:12px;width:26px;height:26px;padding:0;border:none;background:transparent;color:var(--ink-soft);border-radius:4px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;}
+  .share-icon:hover{background:#eee;color:var(--navy);}
+  .popup-share{top:-13px;right:5px;width:24px;height:24px;}
+  .popup-title{padding-right:48px;}
+  .row-actions .share-icon{position:static;width:auto;height:auto;padding:4px 7px;border:1px solid var(--line);background:#fff;}
   .empty-state{
     text-align:center;padding:40px 20px;color:var(--ink-soft);
     font-size:13.5px;border:1px dashed var(--line);background:#fff;
@@ -308,6 +318,9 @@
     tbody td:first-child{padding-top:10px;font-weight:700;}
     tbody td:last-child{padding-bottom:10px;}
     .row-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;}
+    tbody tr{position:relative;}
+    .row-actions .share-icon{position:absolute;top:6px;right:6px;width:28px;height:28px;padding:0;border:none;background:transparent;}
+    tbody td:first-child{padding-right:44px;}
     .row-actions button{padding:7px 5px;font-size:11px;}
   }
 
@@ -593,6 +606,7 @@
 <div class="overlay" id="overlay">
   <div class="modal">
     <div class="modal-head">
+      <button class="share-icon" id="share-modal-btn" type="button" title="Copiar dirección y coordenadas" aria-label="Copiar"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
       <h2 id="modal-title">Nueva obra</h2>
       <p id="modal-coords-view" class="mono"></p>
       <div class="field" id="modal-coords-edit" style="display:none;">
@@ -1475,6 +1489,76 @@
     }
   }
 
+  function showShareToast(msg){
+    let t = document.getElementById('share-toast');
+    if(!t){ t = document.createElement('div'); t.id = 'share-toast'; document.body.appendChild(t); }
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(showShareToast._t);
+    showShareToast._t = setTimeout(()=>t.classList.remove('show'), 2200);
+  }
+
+  async function compartirObra(o){
+    const dir = [o.direccion, o.poblacion].filter(Boolean).join(', ') + (o.provincia ? ` (${o.provincia})` : '');
+    const lat = Number(o.lat), lon = Number(o.lon);
+    const hayCoords = o.lat !== null && o.lat !== '' && o.lon !== null && o.lon !== '' && Number.isFinite(lat) && Number.isFinite(lon);
+    const lines = [dir || 'Sin dirección'];
+    if(hayCoords){
+      lines.push(`${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+      lines.push(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`);
+    }
+    const text = lines.join('\n');
+    const title = o.direccion || 'Obra';
+    const esMovil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if(!esMovil && !window.ReactNativeWebView){
+      // PC: solo copiar al portapapeles, listo para pegar en WhatsApp Web
+      let okPc = false;
+      try{ await navigator.clipboard.writeText(text); okPc = true; }catch(_){
+        try{
+          const ta = document.createElement('textarea');
+          ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+          document.body.appendChild(ta); ta.select();
+          okPc = document.execCommand('copy'); ta.remove();
+        }catch(__){}
+      }
+      showShareToast(okPc ? 'Copiado: dirección y coordenadas' : 'No se pudo copiar');
+      return;
+    }
+    if(navigator.share){
+      try{ await navigator.share({title, text}); return; }
+      catch(err){ if(err && err.name === 'AbortError') return; }
+    }
+    if(window.ReactNativeWebView && !navigator.share){
+      try{ window.ReactNativeWebView.postMessage(JSON.stringify({type:'share-texto', title, message:text})); }catch(_){}
+    }
+    let ok = false;
+    try{ await navigator.clipboard.writeText(text); ok = true; }catch(_){
+      try{
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+        document.body.appendChild(ta); ta.select();
+        ok = document.execCommand('copy'); ta.remove();
+      }catch(__){}
+    }
+    showShareToast(ok ? 'Dirección y coordenadas copiadas' : 'No se pudo compartir');
+  }
+
+  $('share-modal-btn').addEventListener('click', () => {
+    const existing = editingId ? obras.find(o => o.id === editingId) : null;
+    let lat = pendingLatLng ? pendingLatLng.lat : (existing?.lat ?? null);
+    let lon = pendingLatLng ? pendingLatLng.lng : (existing?.lon ?? null);
+    const ci = $('f-input-coords').value.trim().replace(/;/g, ',');
+    if(ci){
+      const p = ci.split(',').map(x => parseFloat(x.trim().replace(',', '.')));
+      if(p.length === 2 && p.every(Number.isFinite)){ lat = p[0]; lon = p[1]; }
+    }
+    compartirObra({
+      direccion: $('f-input-direccion').value.trim(),
+      poblacion: $('f-input-poblacion').value.trim(),
+      provincia: $('f-input-provincia').value.trim(),
+      lat, lon
+    });
+  });
+
   function closeModal(){
     $('overlay').classList.remove('show');
     editingId = null;
@@ -1602,7 +1686,9 @@
       if(dAlerta !== null) marker.bringToFront();
 
       const popupDiv = document.createElement('div');
+      popupDiv.style.position = 'relative';
       popupDiv.innerHTML = `
+        <button data-action="share" class="share-icon popup-share" title="Copiar dirección y coordenadas" aria-label="Copiar"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
         <div class="popup-title">${escapeHtml(obra.direccion || 'Sin dirección')}</div>
         <div class="popup-meta">${escapeHtml(obra.poblacion || '')} · ${escapeHtml(obra.tecnico || 'sin técnico')}</div>
         ${dAlerta !== null ? `<div class="popup-replanteo" style="margin:4px 0 6px;font-size:12px;font-weight:700;color:${late ? '#d62020' : '#b07a00'};">⚠ Próx. replanteo: ${formatFechaISO(obra.fechaReplanteo)} (${textoDias(dAlerta)})</div>` : ''}
@@ -1633,6 +1719,7 @@
         window.open(mapsUrl, '_blank');
       });
 
+      popupDiv.querySelector('[data-action="share"]').addEventListener('click', () => compartirObra(obra));
       popupDiv.querySelector('[data-action="edit"]').addEventListener('click', () => {
         map.closePopup();
         openModal(L.latLng(obra.lat, obra.lon), obra);
@@ -1826,6 +1913,7 @@
         <td><div class="row-actions">
           <button data-action="ver">Ver en mapa</button>
           <button data-action="maps">Google Maps</button>
+          <button data-action="share" class="share-icon" title="Copiar dirección y coordenadas" aria-label="Copiar"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
           <button data-action="editar">Editar</button>
         </div></td>
       </tr>
@@ -1853,6 +1941,13 @@
           const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(o.lat + ',' + o.lon)}`;
           window.open(mapsUrl, '_blank');
         }
+      });
+    });
+
+    wrap.querySelectorAll('button[data-action="share"]').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        const o = obras.find(x=>x.id===e.currentTarget.closest('tr').dataset.id);
+        if(o) compartirObra(o);
       });
     });
 
