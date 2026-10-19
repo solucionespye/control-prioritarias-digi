@@ -1468,7 +1468,7 @@
     $('f-input-gescal26').value = "";
     $('f-input-direccion').value = "";
     $('f-input-tecnico').value = techName || "";
-    $('f-input-estado').value = "PENDIENTE";
+    $('f-input-estado').value = "NUEVA";
     $('f-input-promotor').value = "";
     $('f-input-contacto').value = "";
     $('f-input-fecha-replanteo').value = "";
@@ -2263,11 +2263,14 @@
           if(userAccuracyCircle) map.removeLayer(userAccuracyCircle);
           const metros = Math.round(accuracy || 0);
           userAccuracyCircle = L.circle([latitude, longitude], {
-            radius: accuracy || 0, color:'#000', weight:1, fillColor:'#000', fillOpacity:0.10
+            radius: accuracy || 0, color:'#000', weight:1, fillColor:'#000', fillOpacity:0.10,
+            interactive:false   // el halo no debe bloquear clics ni pulsación larga
           }).addTo(map);
           userLocationMarker = L.circleMarker([latitude, longitude], {
-            radius: 9, color:'#fff', weight:3, fillColor:'#000', fillOpacity:1
-          }).addTo(map).bindPopup(`Tu ubicación actual (${metros} m)`).openPopup();
+            radius: 9, color:'#fff', weight:3, fillColor:'#000', fillOpacity:1,
+            interactive:false
+          }).addTo(map);
+          L.popup({autoClose:false, closeOnClick:true}).setLatLng([latitude, longitude]).setContent(`Tu ubicación actual (${metros} m)`).openOn(map);
         },
         (err) => {
           clearTimeout(timeout);
