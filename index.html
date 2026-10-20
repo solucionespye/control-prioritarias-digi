@@ -1505,13 +1505,20 @@
     $('geo-status').textContent = "";
     $('overlay').classList.add('show');
 
+    // Al crear o editar una obra, el técnico es el usuario conectado y solo el Superadmin puede cambiarlo
+    const tecEl = $('f-input-tecnico');
+    const bloquearTec = !!techName && !isSuperadmin();   // solo el Superadmin puede cambiarlo
+    tecEl.readOnly = bloquearTec;
+    tecEl.style.background = bloquearTec ? '#eee' : '';
+    tecEl.title = bloquearTec ? 'Asignado a tu usuario (bloqueado)' : '';
+
     if(existing){
       $('f-input-provincia').value = existing.provincia || "";
       $('f-input-poblacion').value = existing.poblacion || "";
       $('f-input-pct').value = existing.pct || "";
       $('f-input-gescal26').value = existing.gescal26 || "";
       $('f-input-direccion').value = existing.direccion || "";
-      $('f-input-tecnico').value = existing.tecnico || "";
+      $('f-input-tecnico').value = (isSuperadmin() ? existing.tecnico : (techName || existing.tecnico)) || "";
       $('f-input-estado').value = existing.estado || "PENDIENTE";
       $('f-input-promotor').value = existing.promotor || "";
       $('f-input-contacto').value = existing.contacto || "";
@@ -1675,7 +1682,7 @@
       direccion,
       pct: $('f-input-pct').value ? Number($('f-input-pct').value) : null,
       gescal26: $('f-input-gescal26').value.trim(),
-      tecnico: $('f-input-tecnico').value.trim(),
+      tecnico: (techName && !isSuperadmin()) ? techName : $('f-input-tecnico').value.trim(),
       estado: $('f-input-estado').value,
       promotor: $('f-input-promotor').value.trim(),
       contacto: $('f-input-contacto').value.trim(),
