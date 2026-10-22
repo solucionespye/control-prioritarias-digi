@@ -1073,6 +1073,12 @@
       .subscribe();
   }
 
+  // Fecha de hoy en formato yyyy-mm-dd según la hora local (toISOString usaría UTC)
+  function hoyLocalISO(){
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+
   async function saveObra(obra){
     try{
       const payload={...obra};
@@ -1473,7 +1479,7 @@
     $('f-input-contacto').value = "";
     $('f-input-fecha-replanteo').value = "";
     $('f-input-entrega-llaves').value = "";
-    $('f-input-fecha-visita').value = new Date().toISOString().slice(0,10);
+    $('f-input-fecha-visita').value = hoyLocalISO();
     editingComentarios = [];
     $('f-input-obs-nuevo').value = "";
     renderComentarios();
@@ -1524,7 +1530,8 @@
       $('f-input-contacto').value = existing.contacto || "";
       $('f-input-fecha-replanteo').value = existing.fechaReplanteo || "";
       $('f-input-entrega-llaves').value = excelDateToISO(existing.entregaLlaves);
-      $('f-input-fecha-visita').value = existing.fechaVisita || "";
+      // Al editar una obra, la fecha de última visita pasa a ser la de hoy (el cambio de estado desde el desplegable del mapa NO la toca)
+      $('f-input-fecha-visita').value = hoyLocalISO();
       editingComentarios = parseComentarios(existing.observaciones);
       renderComentarios();
     } else {
