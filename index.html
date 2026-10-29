@@ -1063,7 +1063,7 @@
     const {data,error}=await supabaseClient.from('obras').select('*').order('creado',{ascending:false});
     if(error){console.error(error);alert('No se pudieron cargar las obras desde Supabase.\n\n'+error.message);return;}
     obras=(data||[]).map(o=>({...o, provincia:(o.provincia||'').toLocaleUpperCase('es'), poblacion:(o.poblacion||'').toLocaleUpperCase('es')})); renderAll();
-    if(!alertShownThisSession && !currentProfile?.debeCambiarPassword){ alertShownThisSession=true; openAlertModal(); }
+    if(!alertShownThisSession && !currentProfile?.debeCambiarPassword){ alertShownThisSession=true; if(isCoordinator()) openAlertModal(); }   // ventana inicial solo para el perfil Coordinador
   }
 
   function startRealtimeSync(){
@@ -1461,12 +1461,6 @@
   });
 
   // ---------- MODAL ----------
-  function hoyLocalISO(){
-    const d = new Date();
-    const p = n => String(n).padStart(2,'0');
-    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
-  }
-
   function resetForm(){
     $('f-input-provincia').value = "";
     $('f-input-poblacion').value = "";
@@ -1479,7 +1473,7 @@
     $('f-input-contacto').value = "";
     $('f-input-fecha-replanteo').value = "";
     $('f-input-entrega-llaves').value = "";
-    $('f-input-fecha-visita').value = hoyLocalISO();
+    $('f-input-fecha-visita').value = new Date().toISOString().slice(0,10);
     editingComentarios = [];
     $('f-input-obs-nuevo').value = "";
     renderComentarios();
@@ -1530,8 +1524,7 @@
       $('f-input-contacto').value = existing.contacto || "";
       $('f-input-fecha-replanteo').value = existing.fechaReplanteo || "";
       $('f-input-entrega-llaves').value = excelDateToISO(existing.entregaLlaves);
-      // Al editar, la última visita se actualiza a hoy automáticamente (se puede cambiar a mano antes de guardar)
-      $('f-input-fecha-visita').value = hoyLocalISO();
+      $('f-input-fecha-visita').value = new Date().toISOString().slice(0,10);   // al editar se actualiza a hoy (se puede cambiar a mano)
       editingComentarios = parseComentarios(existing.observaciones);
       renderComentarios();
     } else {
