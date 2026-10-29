@@ -427,6 +427,12 @@
     background:var(--orange);color:#fff;border:none;border-radius:3px;
     padding:9px 18px;font-weight:600;font-size:14px;cursor:pointer;
   }
+  .cam-torch{
+    display:none;background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.35);
+    border-radius:3px;padding:9px 14px;font-weight:600;font-size:14px;cursor:pointer;
+  }
+  .cam-torch.avail{display:inline-block;}
+  .cam-torch.on{background:#ffc94d;color:#3a2600;border-color:#ffc94d;}
   .cam-stage{position:relative;flex:1;min-height:0;background:#000;}
   #cam-video{width:100%;height:100%;object-fit:contain;display:block;background:#000;}
   #cam-flash{
@@ -714,6 +720,7 @@
 <div id="cam-overlay" role="dialog" aria-label="Cámara">
   <div class="cam-top">
     <span class="cam-count" id="cam-count">0 fotos</span>
+    <button type="button" class="cam-torch" id="cam-torch" aria-pressed="false">🔦 Flash: off</button>
     <button type="button" class="cam-done" id="cam-done">Listo</button>
   </div>
   <div class="cam-stage">
@@ -1264,6 +1271,7 @@
   // Visor propio: cada toque del obturador guarda la foto al instante, sin pedir
   // confirmación. Al terminar se pulsa "Listo" y se borran con la ✕ las que sobren.
   let camStream = null;
+  let torchOn = false;   // flash (linterna) encendido mientras el visor está abierto
 
   function renderCamStrip(){
     const strip = $('cam-strip');
@@ -1303,6 +1311,27 @@
     const v = $('cam-video');
     v.srcObject = camStream;
     try{ await v.play(); }catch(_){}
+    await syncTorch();
+  }
+
+  // Flash = linterna de la cámara trasera (Chrome/Android). Si el dispositivo no la admite, el botón no aparece.
+  function torchSupported(){
+    const t = camStream && camStream.getVideoTracks()[0];
+    try{ return !!(t && t.getCapabilities && t.getCapabilities().torch); }catch(_){ return false; }
+  }
+  function paintTorchBtn(){
+    const b = $('cam-torch');
+    b.classList.toggle('avail', torchSupported());
+    b.classList.toggle('on', torchOn);
+    b.setAttribute('aria-pressed', torchOn ? 'true' : 'false');
+    b.textContent = torchOn ? '🔦 Flash: on' : '🔦 Flash: off';
+  }
+  async function syncTorch(){
+    if(torchSupported()){
+      try{ await camStream.getVideoTracks()[0].applyConstraints({ advanced:[{ torch: torchOn }] }); }
+      catch(e){ console.error(e); torchOn = false; }
+    } else { torchOn = false; }
+    paintTorchBtn();
   }
 
   async function openCamera(){
@@ -1323,6 +1352,7 @@
   }
 
   function closeCamera(){
+    torchOn = false;
     $('cam-overlay').classList.remove('show');
     stopCamStream();
   }
@@ -1354,6 +1384,7 @@
   $('camera-btn').addEventListener('click', openCamera);
   $('cam-shutter').addEventListener('click', takeBurstPhoto);
   $('cam-done').addEventListener('click', closeCamera);
+  $('cam-torch').addEventListener('click', () => { torchOn = !torchOn; syncTorch(); });
   document.addEventListener('visibilitychange', async () => {
     // Al volver a la pestaña con el visor abierto, reactivamos la cámara
     if(document.visibilityState === 'visible' && $('cam-overlay').classList.contains('show')){
