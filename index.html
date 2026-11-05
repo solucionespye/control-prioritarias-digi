@@ -425,13 +425,6 @@
   }
   .btn-send-ds:hover{background:#b84a17;}
   .btn-send-ds:disabled{background:var(--gray);cursor:not-allowed;}
-  .btn-share-fotos{
-    display:flex;align-items:center;gap:6px;
-    background:var(--blue);color:#fff;border:none;
-    padding:9px 14px;border-radius:3px;font-weight:600;font-size:13px;cursor:pointer;
-  }
-  .btn-share-fotos:hover{background:#245984;}
-  .btn-share-fotos:disabled{background:var(--gray);cursor:not-allowed;}
   .fotos-gallery{
     display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px;
   }
@@ -727,8 +720,7 @@
         <label>Fotos</label>
         <div class="fotos-toolbar">
           <button type="button" class="btn-camera" id="camera-btn">📷 Añadir foto</button>
-          <button type="button" class="btn-send-ds" id="send-ds-btn">Enviar a DS</button>
-          <button type="button" class="btn-share-fotos" id="share-fotos-btn" disabled>Compartir</button>
+          <button type="button" class="btn-send-ds" id="share-fotos-btn" disabled>Enviar a DS</button>
         </div>
         <input type="file" id="camera-input" accept="image/*" capture="environment" multiple style="display:none;">
         <div class="fotos-gallery" id="fotos-gallery"></div>
@@ -1194,7 +1186,7 @@
     const total = editingFotos.length;
     const pend = fotosPendientes().length;
     if(total <= FOTOS_LOTE || pend === total || pend === 0){
-      btn.textContent = total > FOTOS_LOTE ? `Compartir (${total} en ${Math.ceil(total / FOTOS_LOTE)} lotes)` : 'Compartir';
+      btn.textContent = total > FOTOS_LOTE ? `Enviar a DS (${total} en ${Math.ceil(total / FOTOS_LOTE)} lotes)` : 'Enviar a DS';
     } else {
       btn.textContent = `Enviar siguientes (${Math.min(FOTOS_LOTE, pend)} de ${pend})`;
     }
@@ -1273,6 +1265,7 @@
       try{
         await sendFotosViaApp(files, direccion);
         marcarEnviado();
+        return true;
       }catch(e){
         console.error(e);
         alert('No se pudieron preparar las fotos para compartir.');
@@ -1281,7 +1274,7 @@
         btn.disabled = !editingFotos.length;
         updateSendBtn();
       }
-      return;
+      return false;
     }
     try{
       if(navigator.canShare && navigator.canShare({ files })){
@@ -1291,6 +1284,7 @@
           text: 'Fotos de la obra: ' + direccion
         });
         marcarEnviado();
+        return true;
       } else {
         alert('Este dispositivo/navegador no admite compartir fotos directamente. Guarda las fotos y súbelas a DS manualmente desde la galería.');
       }
@@ -1298,6 +1292,7 @@
       // El usuario cancela el menú de compartir: no es un error real, no mostramos alerta.
       if(e && e.name !== 'AbortError') console.error(e);
     }
+    return false;
   }
 
   // ---------- CÁMARA EN RÁFAGA ----------
@@ -1406,9 +1401,7 @@
     addFotos(e.target.files);
     e.target.value = ''; // permite volver a tomar otra foto aunque sea "la misma"
   });
-  $('send-ds-btn').addEventListener('click', () => { window.open(DS_UPLOAD_URL, '_blank'); });
   $('share-fotos-btn').addEventListener('click', sendFotosToDS);
-  const DS_UPLOAD_URL = 'https://digistorage.es/app/storage/d147d148-2d22-4a6a-5bc9-1aa51da26435?path=%2F02.%20FINCAS%20PRIORITARIAS%2F01.%20REPLANTEOS%20PENDIENTES%2F02.%20POBLACIONES';
 
   // ---------- COMENTARIOS (historial, solo añadir, nunca borrar) ----------
   let editingComentarios = [];
