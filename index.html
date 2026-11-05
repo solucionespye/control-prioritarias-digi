@@ -216,8 +216,29 @@
   .share-icon{position:absolute;top:10px;right:12px;width:26px;height:26px;padding:0;border:none;background:transparent;color:var(--ink-soft);border-radius:4px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;}
   .share-icon:hover{background:#eee;color:var(--navy);}
   .popup-share{top:-13px;right:5px;width:24px;height:24px;}
-  .popup-title{padding-right:48px;}
+  .popup-title{padding-right:76px;}
   .row-actions .share-icon{position:static;width:auto;height:auto;padding:4px 7px;border:1px solid var(--line);background:#fff;}
+  /* ---------- BOLSA DE OBRAS (multiselección por usuario) ---------- */
+  .bag-check-wrap{display:inline-flex;align-items:center;margin-right:8px;vertical-align:middle;cursor:pointer;}
+  .bag-check{width:18px;height:18px;margin:0;cursor:pointer;accent-color:var(--orange);}
+  tbody tr.in-bag{background:#fff6ee;}
+  .popup-bag{position:absolute;top:-13px;right:33px;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;}
+  #bag-bar{
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    position:sticky;top:0;z-index:5;
+    background:#fff;border:1px solid var(--line);border-left:4px solid var(--orange);
+    border-radius:3px;padding:8px 10px;margin:0 0 10px;
+  }
+  #bag-bar .bag-count{font-size:12.5px;font-weight:700;color:var(--navy);margin-right:auto;font-family:'IBM Plex Mono',monospace;}
+  #bag-bar button{
+    border:1px solid var(--line);background:#fff;border-radius:3px;
+    padding:6px 10px;font-size:12px;font-weight:600;color:var(--ink-soft);cursor:pointer;
+  }
+  #bag-bar button:hover:not(:disabled){border-color:var(--navy);color:var(--navy);}
+  #bag-bar button:disabled{opacity:.45;cursor:not-allowed;}
+  #bag-bar button.bag-on{background:var(--navy);border-color:var(--navy);color:#fff;}
+  #bag-bar button.bag-share{background:var(--blue);border-color:var(--blue);color:#fff;}
+  #bag-bar button.bag-share:disabled{background:var(--gray);border-color:var(--gray);}
   .empty-state{
     text-align:center;padding:40px 20px;color:var(--ink-soft);
     font-size:13.5px;border:1px dashed var(--line);background:#fff;
@@ -322,6 +343,9 @@
     .row-actions .share-icon{position:absolute;top:6px;right:6px;width:28px;height:28px;padding:0;border:none;background:transparent;}
     tbody td:first-child{padding-right:44px;}
     .row-actions button{padding:7px 5px;font-size:11px;}
+    #bag-bar{gap:6px;padding:7px 8px;}
+    #bag-bar .bag-count{flex:1 0 100%;margin-right:0;}
+    #bag-bar button{flex:1 1 0;min-width:0;padding:7px 4px;font-size:11.5px;}
   }
 
   /* ---------- AUTH / USER MANAGEMENT ---------- */
@@ -553,6 +577,7 @@
       <button class="export-btn" id="export-btn">Exportar a Excel</button>
     </div>
     <p class="count-line" id="count-line"></p>
+    <div id="bag-bar"></div>
     <div id="table-wrap"></div>
     <div class="online-foot">
       <div class="online-pill" id="online-pill" title="Usuarios conectados"><span class="online-dot"></span><span id="online-text">1 conectado</span></div>
@@ -1566,7 +1591,7 @@
     showShareToast._t = setTimeout(()=>t.classList.remove('show'), 2200);
   }
 
-  async function compartirObra(o){
+  function obraTexto(o){
     const dir = [o.direccion, o.poblacion].filter(Boolean).join(', ') + (o.provincia ? ` (${o.provincia})` : '');
     const lat = Number(o.lat), lon = Number(o.lon);
     const hayCoords = o.lat !== null && o.lat !== '' && o.lon !== null && o.lon !== '' && Number.isFinite(lat) && Number.isFinite(lon);
@@ -1575,8 +1600,11 @@
       lines.push(`${lat.toFixed(6)}, ${lon.toFixed(6)}`);
       lines.push(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`);
     }
-    const text = lines.join('\n');
-    const title = o.direccion || 'Obra';
+    return lines.join('\n');
+  }
+
+  async function compartirTexto(title, text, msgs){
+    msgs = msgs || { pc:'Copiado: dirección y coordenadas', ok:'Dirección y coordenadas copiadas' };
     const esMovil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     if(!esMovil && !window.ReactNativeWebView){
       // PC: solo copiar al portapapeles, listo para pegar en WhatsApp Web
@@ -1589,7 +1617,7 @@
           okPc = document.execCommand('copy'); ta.remove();
         }catch(__){}
       }
-      showShareToast(okPc ? 'Copiado: dirección y coordenadas' : 'No se pudo copiar');
+      showShareToast(okPc ? msgs.pc : 'No se pudo copiar');
       return;
     }
     if(navigator.share){
@@ -1608,7 +1636,11 @@
         ok = document.execCommand('copy'); ta.remove();
       }catch(__){}
     }
-    showShareToast(ok ? 'Dirección y coordenadas copiadas' : 'No se pudo compartir');
+    showShareToast(ok ? msgs.ok : 'No se pudo compartir');
+  }
+
+  function compartirObra(o){
+    return compartirTexto(o.direccion || 'Obra', obraTexto(o));
   }
 
   $('share-modal-btn').addEventListener('click', () => {
@@ -1758,6 +1790,7 @@
       popupDiv.style.position = 'relative';
       popupDiv.innerHTML = `
         <button data-action="share" class="share-icon popup-share" title="Copiar dirección y coordenadas" aria-label="Copiar"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+        <label class="popup-bag" title="Añadir a la bolsa"><input type="checkbox" class="bag-check popup-bag-check" aria-label="Añadir a la bolsa"></label>
         <div class="popup-title">${escapeHtml(obra.direccion || 'Sin dirección')}</div>
         <div class="popup-meta">${escapeHtml(obra.poblacion || '')} · ${escapeHtml(obra.tecnico || 'sin técnico')}</div>
         ${dAlerta !== null ? `<div class="popup-replanteo" style="margin:4px 0 6px;font-size:12px;font-weight:700;color:${late ? '#d62020' : '#b07a00'};">⚠ Próx. replanteo: ${formatFechaISO(obra.fechaReplanteo)} (${textoDias(dAlerta)})</div>` : ''}
@@ -1789,6 +1822,15 @@
       });
 
       popupDiv.querySelector('[data-action="share"]').addEventListener('click', () => compartirObra(obra));
+      const popupBagCb = popupDiv.querySelector('.popup-bag-check');
+      popupBagCb.checked = bagLoad().has(obra.id);
+      popupBagCb.addEventListener('change', () => {
+        if(popupBagCb.checked) bag.add(obra.id); else bag.delete(obra.id);
+        bagSave();
+        if(bagOnly){ map.closePopup(); renderMarkers(); }   // al quitarla, la obra sale de la vista
+        renderTable();                                       // refresca casilla de la tabla y contador de la bolsa
+      });
+      marker.on('popupopen', () => { popupBagCb.checked = bagLoad().has(obra.id); });   // por si se marcó desde la tabla
       popupDiv.querySelector('[data-action="edit"]').addEventListener('click', () => {
         map.closePopup();
         openModal(L.latLng(obra.lat, obra.lon), obra);
@@ -1936,7 +1978,62 @@
     if(alertFilterActive) $('panel').scrollIntoView({behavior:'smooth', block:'start'});
   });
 
+
+  // ---------- BOLSA DE OBRAS (multiselección independiente por usuario) ----------
+  // La selección se guarda en este dispositivo, separada por usuario, y sobrevive a los filtros.
+  let bagUserId = null, bag = new Set(), bagOnly = false;
+  function bagKey(){ return 'bolsa_obras_v1_' + bagUserId; }
+  function bagLoad(){
+    const uid = currentUser ? currentUser.id : null;
+    if(uid !== bagUserId){
+      bagUserId = uid; bag = new Set(); bagOnly = false;
+      if(uid){
+        try{ (JSON.parse(localStorage.getItem(bagKey()) || '[]') || []).forEach(id => bag.add(id)); }catch(_){}
+      }
+    }
+    return bag;
+  }
+  function bagSave(){
+    if(!bagUserId) return;
+    try{ localStorage.setItem(bagKey(), JSON.stringify([...bag])); }catch(_){}
+  }
+  // Obras de la bolsa que siguen existiendo, en el orden de la lista
+  function bagObras(){ bagLoad(); return obras.filter(o => bag.has(o.id)); }
+
+  function renderBagBar(){
+    const bar = $('bag-bar');
+    if(!bar) return;
+    bagLoad();
+    const n = bagObras().length;
+    bar.innerHTML = `
+      <span class="bag-count">Bolsa: ${n} obra${n===1?'':'s'}</span>
+      <button type="button" id="bag-only-btn" class="${bagOnly?'bag-on':''}" ${n||bagOnly?'':'disabled'}>Solo bolsa</button>
+      <button type="button" id="bag-share-btn" class="bag-share" ${n?'':'disabled'}>Compartir</button>
+      <button type="button" id="bag-clear-btn" ${n?'':'disabled'}>Vaciar</button>
+    `;
+    $('bag-only-btn').addEventListener('click', () => { bagOnly = !bagOnly; renderMarkers(); renderTable(); });
+    $('bag-share-btn').addEventListener('click', compartirBolsa);
+    $('bag-clear-btn').addEventListener('click', () => {
+      const total = bagObras().length;
+      if(!total || !confirm(`¿Vaciar la bolsa (${total} obra${total===1?'':'s'})?`)) return;
+      bag.clear(); bagSave(); bagOnly = false;
+      renderMarkers(); renderTable();
+    });
+  }
+
+  function compartirBolsa(){
+    const lista = bagObras();
+    if(!lista.length) return;
+    const texto = lista.map((o, i) => `${i + 1}. ` + obraTexto(o)).join('\n\n');
+    const n = lista.length;
+    return compartirTexto(`Obras (${n})`, texto, {
+      pc: `Copiado: ${n} obra${n===1?'':'s'} (dirección y coordenadas)`,
+      ok: `${n} obra${n===1?'':'s'} copiada${n===1?'':'s'}`
+    });
+  }
+
   function getFiltered(){
+    bagLoad();
     const q = $('f-search').value.trim().toLowerCase();
     const fp = $('f-poblacion').value;
     const ft = $('f-tecnico').value;
@@ -1946,6 +2043,7 @@
     const alertIds = alertFilterActive ? new Set(obrasConAlerta().map(x=>x.o.id)) : null;
     return obras.filter(o => {
       if(alertIds && !alertIds.has(o.id)) return false;
+      if(bagOnly && !bag.has(o.id)) return false;
       if(fpv && o.provincia !== fpv) return false;
       if(fp && o.poblacion !== fp) return false;
       if(ft && o.tecnico !== ft) return false;
@@ -1963,7 +2061,10 @@
   }
 
   function renderTable(){
+    bagLoad();
+    if(bagOnly && !bagObras().length) bagOnly = false;   // bolsa vacía: volver a la lista normal
     const list = getFiltered();
+    renderBagBar();
     $('count-line').textContent = `${list.length} obra${list.length===1?'':'s'} mostradas de ${obras.length} en total`;
     const wrap = $('table-wrap');
     if(list.length === 0){
@@ -1971,8 +2072,8 @@
       return;
     }
     const rows = list.map(o => `
-      <tr data-id="${o.id}">
-        <td>${escapeHtml(o.poblacion||'—')}</td>
+      <tr data-id="${o.id}"${bag.has(o.id)?' class="in-bag"':''}>
+        <td><label class="bag-check-wrap" title="Añadir a la bolsa"><input type="checkbox" class="bag-check" aria-label="Añadir a la bolsa"${bag.has(o.id)?' checked':''}></label>${escapeHtml(o.poblacion||'—')}</td>
         <td>${escapeHtml(o.direccion||'—')}</td>
         <td><span class="badge${o.estado==='NUEVA'?' nueva':''}" style="background:${ESTADO_COLOR[o.estado]}">${ESTADO_LABEL[o.estado]||o.estado}</span></td>
         <td>${escapeHtml(o.tecnico||'—')}</td>
@@ -1995,6 +2096,17 @@
         <tbody>${rows}</tbody>
       </table>
     `;
+    wrap.querySelectorAll('.bag-check').forEach(cb=>{
+      cb.addEventListener('change', (e)=>{
+        const tr = e.target.closest('tr');
+        const id = tr.dataset.id;
+        if(e.target.checked) bag.add(id); else bag.delete(id);
+        bagSave();
+        if(bagOnly){ renderMarkers(); renderTable(); return; }   // al quitar, la obra sale de la vista
+        tr.classList.toggle('in-bag', e.target.checked);
+        renderBagBar();
+      });
+    });
     wrap.querySelectorAll('button[data-action="ver"]').forEach(btn=>{
       btn.addEventListener('click', (e)=>{
         const id = e.target.closest('tr').dataset.id;
