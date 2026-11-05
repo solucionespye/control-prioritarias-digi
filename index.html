@@ -216,13 +216,13 @@
   .share-icon{position:absolute;top:10px;right:12px;width:26px;height:26px;padding:0;border:none;background:transparent;color:var(--ink-soft);border-radius:4px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;}
   .share-icon:hover{background:#eee;color:var(--navy);}
   .popup-share{top:-13px;right:5px;width:24px;height:24px;}
-  .popup-title{padding-right:76px;}
+  .popup-title{padding-right:48px;}
   .row-actions .share-icon{position:static;width:auto;height:auto;padding:4px 7px;border:1px solid var(--line);background:#fff;}
   /* ---------- BOLSA DE OBRAS (multiselección por usuario) ---------- */
   .bag-check-wrap{display:inline-flex;align-items:center;margin-right:8px;vertical-align:middle;cursor:pointer;}
   .bag-check{width:18px;height:18px;margin:0;cursor:pointer;accent-color:var(--orange);}
   tbody tr.in-bag{background:#fff6ee;}
-  .popup-bag{position:absolute;top:-13px;right:33px;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;}
+  .popup-bag{display:inline-flex;align-items:center;margin-right:7px;vertical-align:middle;cursor:pointer;}
   #bag-bar{
     display:flex;align-items:center;gap:8px;flex-wrap:wrap;
     position:sticky;top:0;z-index:5;
@@ -1790,8 +1790,7 @@
       popupDiv.style.position = 'relative';
       popupDiv.innerHTML = `
         <button data-action="share" class="share-icon popup-share" title="Copiar dirección y coordenadas" aria-label="Copiar"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
-        <label class="popup-bag" title="Añadir a la bolsa"><input type="checkbox" class="bag-check popup-bag-check" aria-label="Añadir a la bolsa"></label>
-        <div class="popup-title">${escapeHtml(obra.direccion || 'Sin dirección')}</div>
+        <div class="popup-title"><label class="popup-bag" title="Añadir a la bolsa"><input type="checkbox" class="bag-check popup-bag-check" aria-label="Añadir a la bolsa"></label>${escapeHtml(obra.direccion || 'Sin dirección')}</div>
         <div class="popup-meta">${escapeHtml(obra.poblacion || '')} · ${escapeHtml(obra.tecnico || 'sin técnico')}</div>
         ${dAlerta !== null ? `<div class="popup-replanteo" style="margin:4px 0 6px;font-size:12px;font-weight:700;color:${late ? '#d62020' : '#b07a00'};">⚠ Próx. replanteo: ${formatFechaISO(obra.fechaReplanteo)} (${textoDias(dAlerta)})</div>` : ''}
         <select class="popup-select" data-id="${obra.id}">
